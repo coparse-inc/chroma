@@ -23,7 +23,7 @@ import uuid
 import json
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chromadb")
 
 _operation_codes = {
     Operation.ADD: 0,
@@ -117,6 +117,7 @@ class SqlEmbeddingsQueue(SqlDB, Producer, Consumer):
     def submit_embeddings(
         self, topic_name: str, embeddings: Sequence[SubmitEmbeddingRecord]
     ) -> Sequence[SeqId]:
+        logger.info(f"embeddings_queue.py: submitting embeddings in embeddings_queue, running: {self._running}")
         if not self._running:
             raise RuntimeError("Component not running")
 
@@ -179,6 +180,8 @@ class SqlEmbeddingsQueue(SqlDB, Producer, Consumer):
                     operation=submit_embedding_record["operation"],
                 )
                 embedding_records.append(embedding_record)
+            logger.info(
+                f"embeddings_queue.py: notifying {topic_name} with embedding records: {len(embedding_records)}")
             self._notify_all(topic_name, embedding_records)
             return seq_ids
 
@@ -323,6 +326,7 @@ class SqlEmbeddingsQueue(SqlDB, Producer, Consumer):
         """Send a notification to each subscriber of the given topic."""
         if self._running:
             for sub in self._subscriptions[topic]:
+                logger.info(f"embeddings_queue.py: subscription: {sub.id}")
                 self._notify_one(sub, embeddings)
 
     def _notify_one(
@@ -343,6 +347,8 @@ class SqlEmbeddingsQueue(SqlDB, Producer, Consumer):
         # Log errors instead of throwing them to preserve async semantics
         # for consistency between local and distributed configurations
         try:
+            logger.info(
+                f"embeddings_queue.py: len(filtered_embeddings): {len(filtered_embeddings)}, should_unsubscribe: {should_unsubscribe}, callback: {sub.callback}")
             if len(filtered_embeddings) > 0:
                 sub.callback(filtered_embeddings)
             if should_unsubscribe:

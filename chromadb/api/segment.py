@@ -48,7 +48,7 @@ import logging
 import re
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chromadb")
 
 
 # mimics s3 bucket requirements for naming
@@ -335,12 +335,16 @@ class SegmentAPI(API):
         metadatas: Optional[Metadatas] = None,
         documents: Optional[Documents] = None,
     ) -> bool:
+        logger.info("segment.py: reached /upsert endpoint")
         coll = self._get_collection(collection_id)
         self._manager.hint_use_collection(collection_id, t.Operation.UPSERT)
+        logger.info(
+            f"segment.py: batch len: {len(ids)}, max batch size: {self.max_batch_size}")
         validate_batch(
             (ids, embeddings, metadatas, documents),
             {"max_batch_size": self.max_batch_size},
         )
+        logger.info("segment.py: batch validated")
         records_to_submit = []
         for r in _records(
             t.Operation.UPSERT,
@@ -351,8 +355,9 @@ class SegmentAPI(API):
         ):
             self._validate_embedding_record(coll, r)
             records_to_submit.append(r)
-        self._producer.submit_embeddings(coll["topic"], records_to_submit)
-
+        logger.info("segment.py: submitting embeddings in segment.py")
+        seqIds = self._producer.submit_embeddings(coll["topic"], records_to_submit)
+        logger.info(f"segment.py: seq ids from submission: {seqIds}")
         return True
 
     @override

@@ -34,7 +34,7 @@ from chromadb.config import Settings, System
 from chromadb.telemetry import Telemetry
 from urllib.parse import urlparse, urlunparse, quote
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chromadb")
 
 
 class FastAPI(API):
@@ -251,6 +251,7 @@ class FastAPI(API):
         where_document: Optional[WhereDocument] = {},
         include: Include = ["metadatas", "documents"],
     ) -> GetResult:
+        logger.info("fastapi.py: reached /get endpoint")
         if page and page_size:
             offset = (page - 1) * page_size
             limit = page_size
@@ -374,6 +375,7 @@ class FastAPI(API):
         Upserts a batch of embeddings in the database
         - pass in column oriented data lists
         """
+        logger.info("fastapi.py: reached /upsert endpoint")
         batch = (ids, embeddings, metadatas, documents)
         validate_batch(batch, {"max_batch_size": self.max_batch_size})
         resp = self._submit_batch(

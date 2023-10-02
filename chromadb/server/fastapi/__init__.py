@@ -37,7 +37,7 @@ from starlette.requests import Request
 import logging
 from chromadb.telemetry import ServerContext, Telemetry
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chromadb")
 
 
 def use_route_names_as_operation_ids(app: _FastAPI) -> None:
@@ -105,6 +105,8 @@ class FastAPI(chromadb.server.Server):
         Telemetry.SERVER_CONTEXT = ServerContext.FASTAPI
         self._app = fastapi.FastAPI(debug=True)
         self._api: chromadb.api.API = chromadb.Client(settings)
+
+        logger.info(f"logger initiated: {__name__}")
 
         self._app.middleware("http")(catch_exceptions_middleware)
         self._app.add_middleware(
@@ -269,6 +271,7 @@ class FastAPI(chromadb.server.Server):
         )
 
     def upsert(self, collection_id: str, upsert: AddEmbedding) -> None:
+        logger.info("reached /upsert endpoint")
         return self._api._upsert(
             collection_id=_uuid(collection_id),
             ids=upsert.ids,

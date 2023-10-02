@@ -29,10 +29,10 @@ from pypika.terms import Criterion
 from itertools import islice, groupby
 from functools import reduce
 import sqlite3
-
+import json
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chromadb")
 
 
 class SqliteMetadataSegment(MetadataReader):
@@ -52,6 +52,8 @@ class SqliteMetadataSegment(MetadataReader):
     def start(self) -> None:
         if self._topic:
             seq_id = self.max_seqid()
+            logger.info(
+                f"subscribing to topic in sqlite.py. topic: {self._topic}, start: {seq_id}")
             self._subscription = self._consumer.subscribe(
                 self._topic, self._write_metadata, start=seq_id
             )
@@ -192,6 +194,7 @@ class SqliteMetadataSegment(MetadataReader):
     ) -> None:
         """Add or update a single EmbeddingRecord into the DB"""
 
+        logger.info("sqlite.py: _insert_record: reached")
         t = Table("embeddings")
         q = (
             self._db.querybuilder()
@@ -209,6 +212,7 @@ class SqliteMetadataSegment(MetadataReader):
         try:
             id = cur.execute(sql, params).fetchone()[0]
         except sqlite3.IntegrityError:
+            logger.info("sqlite.py: _insert_record: IntegrityError")
             # Can't use INSERT OR REPLACE here because it changes the primary key.
             if upsert:
                 return self._update_record(cur, record)
@@ -353,6 +357,7 @@ class SqliteMetadataSegment(MetadataReader):
 
     def _update_record(self, cur: Cursor, record: EmbeddingRecord) -> None:
         """Update a single EmbeddingRecord in the DB"""
+        logger.info(f"sqlite.py: _update_record")
         t = Table("embeddings")
         q = (
             self._db.querybuilder()
@@ -364,6 +369,7 @@ class SqliteMetadataSegment(MetadataReader):
         sql, params = get_sql(q)
         sql = sql + " RETURNING id"
         result = cur.execute(sql, params).fetchone()
+        logger.info(f"sqlite.py: _update_record: result {result}")
         if result is None:
             logger.warning(f"Update of nonexisting embedding ID: {record['id']}")
         else:
@@ -374,6 +380,7 @@ class SqliteMetadataSegment(MetadataReader):
     def _write_metadata(self, records: Sequence[EmbeddingRecord]) -> None:
         """Write embedding metadata to the database. Care should be taken to ensure
         records are append-only (that is, that seq-ids should increase monotonically)"""
+        logger.info(f"sqlite.py: _write_metadata: record count: {len(records)}")
         with self._db.tx() as cur:
             for record in records:
                 q = (
@@ -389,6 +396,7 @@ class SqliteMetadataSegment(MetadataReader):
                 sql = sql.replace("INSERT", "INSERT OR REPLACE")
                 cur.execute(sql, params)
 
+                logger.info(f"sqlite.py: _write_metadata: executed SQL. Record id: {record['id']}. Record operation: {record['operation']}")
                 if record["operation"] == Operation.ADD:
                     self._insert_record(cur, record, False)
                 elif record["operation"] == Operation.UPSERT:
@@ -397,6 +405,7 @@ class SqliteMetadataSegment(MetadataReader):
                     self._delete_record(cur, record)
                 elif record["operation"] == Operation.UPDATE:
                     self._update_record(cur, record)
+        logger.info(f"_sqlite.py: _write_metadata: completed")
 
     def _where_map_criterion(
         self, q: QueryBuilder, where: Where, embeddings_t: Table, metadata_t: Table

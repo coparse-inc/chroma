@@ -21,10 +21,11 @@ from chromadb.errors import InvalidDimensionException
 import hnswlib
 from chromadb.utils.read_write_lock import ReadWriteLock, ReadRWLock, WriteRWLock
 import logging
+import json
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chromadb")
 
-DEFAULT_CAPACITY = 1000
+DEFAULT_CAPACITY = 10000
 
 
 class LocalHnswSegment(VectorReader):
@@ -77,6 +78,7 @@ class LocalHnswSegment(VectorReader):
         super().start()
         if self._topic:
             seq_id = self.max_seqid()
+            logger.info(f"subscribing to topic in local_hnsw.py. topic: {self._topic}, start: {seq_id}")
             self._subscription = self._consumer.subscribe(
                 self._topic, self._write_records, start=seq_id
             )
@@ -253,6 +255,7 @@ class LocalHnswSegment(VectorReader):
             index = cast(hnswlib.Index, self._index)
 
             # First, update the index
+            logger.info(f"local_hnsw.py: adding {len(vectors_to_write)} vectors, {len(labels_to_write)} labels to index")
             index.add_items(vectors_to_write, labels_to_write)
 
             # If that succeeds, update the mappings
@@ -266,9 +269,11 @@ class LocalHnswSegment(VectorReader):
 
             # If that succeeds, finally the seq ID
             self._max_seq_id = batch.max_seq_id
+            logger.info("local_hnsw.py: operation successful")
 
     def _write_records(self, records: Sequence[EmbeddingRecord]) -> None:
         """Add a batch of embeddings to the index"""
+        logger.info(f"_write_records reached in local_hnsw.py. record count: {len(records)}. running: {self._running}")
         if not self._running:
             raise RuntimeError("Cannot add embeddings to stopped component")
 
@@ -304,6 +309,7 @@ class LocalHnswSegment(VectorReader):
                 elif op == Operation.UPSERT:
                     batch.apply(record, label is not None)
 
+            logger.info(f"local_hnsw.py batch created: {json.dumps(batch)}")
             self._apply_batch(batch)
 
     @override

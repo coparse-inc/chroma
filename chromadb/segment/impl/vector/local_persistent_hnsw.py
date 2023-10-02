@@ -24,6 +24,7 @@ from chromadb.types import (
 )
 import hnswlib
 import logging
+import json 
 
 from chromadb.utils.read_write_lock import ReadRWLock, WriteRWLock
 
@@ -94,7 +95,9 @@ class PersistentLocalHnswSegment(LocalHnswSegment):
         if not os.path.exists(self._get_storage_folder()):
             os.makedirs(self._get_storage_folder(), exist_ok=True)
         # Load persist data if it exists already, otherwise create it
+        logger.info(f"local_persistent_hnsw.py: index exists: {self._index_exists()}")
         if self._index_exists():
+            logger.info(f"local_persistent_hnsw: reading index from metadata file {self._get_metadata_file()}")
             self._persist_data = PersistentData.load_from_file(
                 self._get_metadata_file()
             )
@@ -107,6 +110,7 @@ class PersistentLocalHnswSegment(LocalHnswSegment):
             # If the index was written to, we need to re-initialize it
             if len(self._id_to_label) > 0:
                 self._dimensionality = cast(int, self._dimensionality)
+                logger.info(f"local_persistent_hnsw: re-initing index with dimensionality {self._dimensionality}")
                 self._init_index(self._dimensionality)
         else:
             self._persist_data = PersistentData(
@@ -173,6 +177,7 @@ class PersistentLocalHnswSegment(LocalHnswSegment):
         self._index_initialized = True
 
     def _persist(self) -> None:
+        logger.info(f"local_persistent_hnsw.py: _persist: metadata file {self._get_metadata_file()}")
         """Persist the index and data to disk"""
         index = cast(hnswlib.Index, self._index)
 
@@ -196,6 +201,7 @@ class PersistentLocalHnswSegment(LocalHnswSegment):
     @override
     def _apply_batch(self, batch: Batch) -> None:
         super()._apply_batch(batch)
+        logger.info(f"local_persistent_hnsw.py: _apply_batch: _total_elements_added: {self._total_elements_added}, _persist_data.total_elements_added: {self._persist_data.total_elements_added}, _sync_threshold: {self._sync_threshold}")
         if (
             self._total_elements_added - self._persist_data.total_elements_added
             >= self._sync_threshold
@@ -205,6 +211,7 @@ class PersistentLocalHnswSegment(LocalHnswSegment):
     @override
     def _write_records(self, records: Sequence[EmbeddingRecord]) -> None:
         """Add a batch of embeddings to the index"""
+        logger.info(f"_write_records reached in local_persistent_hnsw.py. record count: {len(records)}. running: {self._running}")
         if not self._running:
             raise RuntimeError("Cannot add embeddings to stopped component")
         with WriteRWLock(self._lock):
@@ -212,6 +219,7 @@ class PersistentLocalHnswSegment(LocalHnswSegment):
                 if record["embedding"] is not None:
                     self._ensure_index(len(records), len(record["embedding"]))
                 if not self._index_initialized:
+                    logger.info(f"local_persistent_hnsw.py: not _index_initialized")
                     # If the index is not initialized here, it means that we have
                     # not yet added any records to the index. So we can just
                     # ignore the record since it was a delete.
@@ -254,6 +262,8 @@ class PersistentLocalHnswSegment(LocalHnswSegment):
                     if record["embedding"] is not None:
                         self._curr_batch.apply(record, exists_in_index)
                         self._brute_force_index.upsert([record])
+                
+                # logger.info(f"len(self._curr_batch) >= self._batch_size: {len(self._curr_batch) >= self._batch_size}, num changes: {len(self._curr_batch)}, self.batch_size: {self._batch_size}")
                 if len(self._curr_batch) >= self._batch_size:
                     self._apply_batch(self._curr_batch)
                     self._curr_batch = Batch()
